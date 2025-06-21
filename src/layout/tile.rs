@@ -691,6 +691,9 @@ impl<W: LayoutElement> Tile<W> {
             size.w += width * 2.;
             size.h += width * 2.;
         }
+        
+        // Add the height of the top bar to the total tile size
+        size.h += super::top_bar::TOP_BAR_HEIGHT;
 
         size
     }
@@ -765,6 +768,11 @@ impl<W: LayoutElement> Tile<W> {
             size.h = f64::max(1., size.h - width * 2.);
         }
 
+        // Subtract the top bar height when not in fullscreen mode
+        if !self.is_fullscreen {
+            size.h = f64::max(1., size.h - super::top_bar::TOP_BAR_HEIGHT);
+        }
+
         // The size request has to be i32 unfortunately, due to Wayland. We floor here instead of
         // round to avoid situations where proportionally-sized columns don't fit on the screen
         // exactly.
@@ -781,11 +789,19 @@ impl<W: LayoutElement> Tile<W> {
     }
 
     pub fn tile_height_for_window_height(&self, size: f64) -> f64 {
-        if self.border.is_off() {
-            size
-        } else {
-            size + self.border.width() * 2.
+        let mut result = size;
+        
+        // Add border width if border isn't off
+        if !self.border.is_off() {
+            result += self.border.width() * 2.;
         }
+        
+        // Add top bar height if not in fullscreen mode
+        if !self.is_fullscreen {
+            result += super::top_bar::TOP_BAR_HEIGHT;
+        }
+        
+        result
     }
 
     pub fn window_width_for_tile_width(&self, size: f64) -> f64 {
@@ -797,11 +813,19 @@ impl<W: LayoutElement> Tile<W> {
     }
 
     pub fn window_height_for_tile_height(&self, size: f64) -> f64 {
-        if self.border.is_off() {
-            size
-        } else {
-            size - self.border.width() * 2.
+        let mut result = size;
+        
+        // Subtract border width if border isn't off
+        if !self.border.is_off() {
+            result = f64::max(1., result - self.border.width() * 2.);
         }
+        
+        // Subtract top bar height if not in fullscreen mode
+        if !self.is_fullscreen {
+            result = f64::max(1., result - super::top_bar::TOP_BAR_HEIGHT);
+        }
+        
+        result
     }
 
     pub fn request_fullscreen(&mut self, animate: bool, transaction: Option<Transaction>) {
