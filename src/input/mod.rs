@@ -2535,6 +2535,28 @@ impl State {
 
             if let Some(mapped) = self.niri.window_under_cursor() {
                 let window = mapped.window.clone();
+                
+                // Handle top bar button clicks
+                if button == Some(MouseButton::Left) && ButtonState::Pressed == button_state {
+                    // Get the current cursor position
+                    let location = pointer.current_location();
+                    
+                    // Look for any tile that contains this window and check for top bar hit
+                    // We already have the mapped window from the window_under_cursor call above
+                    // So we can use that reference directly
+                    if let Some((tile, hit)) = self.niri.layout.find_tile_for_window(mapped, location) {
+                        if let Some(button_idx) = tile.hit_top_bar(hit) {
+                            // Run fuzzel on button click
+                            let command = "fuzzel";
+                            trace!("Running command from top bar button {}: {}", button_idx, command);
+                            spawn(vec![command], None);
+                            
+                            // FIXME: granular.
+                            self.niri.queue_redraw_all();
+                            return;
+                        }
+                    }
+                }
 
                 // Check if we need to start an interactive move.
                 if button == Some(MouseButton::Left) && !pointer.is_grabbed() {

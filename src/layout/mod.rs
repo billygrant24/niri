@@ -57,6 +57,8 @@ pub use self::monitor::MonitorRenderElement;
 use self::monitor::{Monitor, WorkspaceSwitch};
 use self::workspace::{OutputId, Workspace};
 use crate::animation::{Animation, Clock};
+
+mod top_bar;
 use crate::input::swipe_tracker::SwipeTracker;
 use crate::layout::scrolling::ScrollDirection;
 use crate::niri_render_elements;
@@ -530,6 +532,11 @@ pub enum HitType {
         /// Whether the hit was on the tab indicator.
         is_tab_indicator: bool,
     },
+    /// The hit is on a button in the top bar.
+    TopBarButton {
+        /// Index of the button that was hit (0, 1, or 2).
+        button_idx: usize,
+    },
 }
 
 #[derive(Debug)]
@@ -594,8 +601,19 @@ impl HitType {
         match &mut self {
             HitType::Input { win_pos } => *win_pos += offset,
             HitType::Activate { .. } => (),
+            HitType::TopBarButton { .. } => (),
         }
         self
+    }
+
+    pub fn to_activate(self) -> Self {
+        match self {
+            HitType::Input { .. } => HitType::Activate {
+                is_tab_indicator: false,
+            },
+            HitType::Activate { .. } => self,
+            HitType::TopBarButton { .. } => self,
+        }
     }
 
     pub fn hit_tile<W: LayoutElement>(
@@ -606,15 +624,6 @@ impl HitType {
         let pos_within_tile = point - tile_pos;
         tile.hit(pos_within_tile)
             .map(|hit| (tile.window(), hit.offset_win_pos(tile_pos)))
-    }
-
-    pub fn to_activate(self) -> Self {
-        match self {
-            HitType::Input { .. } => HitType::Activate {
-                is_tab_indicator: false,
-            },
-            HitType::Activate { .. } => self,
-        }
     }
 }
 
@@ -690,6 +699,53 @@ impl OverviewProgress {
 }
 
 impl<W: LayoutElement> Layout<W> {
+    /// Find a tile for a window and calculate the hit position relative to that tile
+    pub fn find_tile_for_window(
+        &self,
+        window: &W,
+        cursor_pos: Point<f64, Logical>,
+    ) -> Option<(&Tile<W>, Point<f64, Logical>)> {
+        // Use the niri instance to get the output under the cursor
+        // This will be accessed through the parent Niri struct
+        
+        // Access monitors based on the enum variant
+        let monitors = match &self.monitor_set {
+            MonitorSet::Normal { monitors, .. } => monitors,
+            MonitorSet::NoOutputs { .. } => return None, // No outputs connected
+        };
+        
+        // For each monitor
+        for monitor in monitors {
+            // Get the output for this monitor
+            let output = monitor.output();
+            
+            // Process this output
+            {
+                // Check if cursor is over this output
+                // Get position relative to output
+                let pos_within_output = cursor_pos; // We'll need to adjust this based on output position
+                
+                // Find the workspace under the cursor
+                if let Some((workspace, geo)) = monitor.workspace_under(pos_within_output) {
+                    // Convert cursor position to workspace-local coordinates
+                    let pos_within_workspace = pos_within_output - geo.loc;
+
+                    // Try to find the tile containing this window
+                    if let Some(tile) = workspace.find_tile_for_window(window) {
+                        // Find the position of this tile within the workspace
+                        if let Some(tile_pos) = workspace.find_tile_pos(tile) {
+                            // Calculate cursor position relative to the tile
+                            let pos_within_tile = pos_within_workspace - tile_pos;
+                            return Some((tile, pos_within_tile));
+                        }
+                    }
+                }
+            }
+        }
+
+        None
+    }
+
     pub fn new(clock: Clock, config: &Config) -> Self {
         Self::with_options_and_workspaces(clock, config, Options::from_config(config))
     }

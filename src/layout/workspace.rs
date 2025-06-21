@@ -1557,6 +1557,37 @@ impl<W: LayoutElement> Workspace<W> {
 
         self.scrolling.window_under(pos)
     }
+    
+    /// Find a tile that contains the given window
+    pub fn find_tile_for_window(&self, window: &W) -> Option<&Tile<W>> {
+        // Check floating windows first
+        if let Some(tile) = self.floating.find_tile_for_window(window) {
+            return Some(tile);
+        }
+        
+        // Then check tiled windows
+        self.scrolling.find_tile_for_window(window)
+    }
+    
+    /// Find the position of a tile within the workspace
+    pub fn find_tile_pos(&self, tile: &Tile<W>) -> Option<Point<f64, Logical>> {
+        // Check floating windows first
+        for (t, pos) in self.floating.tiles_with_render_positions() {
+            if std::ptr::eq(t as *const _, tile as *const _) {
+                return Some(pos);
+            }
+        }
+        
+        // Then check tiled windows
+        for (t, pos, _) in self.scrolling.tiles_with_render_positions() {
+            if std::ptr::eq(t as *const _, tile as *const _) {
+                return Some(pos);
+            }
+        }
+        
+        None
+    }
+    
 
     pub fn resize_edges_under(&self, pos: Point<f64, Logical>) -> Option<ResizeEdge> {
         self.tiles_with_render_positions()

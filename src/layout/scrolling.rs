@@ -2899,6 +2899,19 @@ impl<W: LayoutElement> ScrollingSpace<W> {
 
         None
     }
+    
+    /// Find a tile that contains the given window
+    pub fn find_tile_for_window(&self, window: &W) -> Option<&Tile<W>> {
+        for column in &self.columns {
+            for tile in &column.tiles {
+                if tile.window().id() == window.id() {
+                    return Some(tile);
+                }
+            }
+        }
+        
+        None
+    }
 
     pub fn view_offset_gesture_begin(&mut self, is_touchpad: bool) {
         if self.columns.is_empty() {

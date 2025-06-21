@@ -306,6 +306,17 @@ impl<W: LayoutElement> FloatingSpace<W> {
             (tile, pos)
         })
     }
+    
+    /// Find a tile that contains the given window
+    pub fn find_tile_for_window(&self, window: &W) -> Option<&Tile<W>> {
+        for tile in &self.tiles {
+            if tile.window().id() == window.id() {
+                return Some(tile);
+            }
+        }
+        
+        None
+    }
 
     pub fn tiles_with_render_positions_mut(
         &mut self,

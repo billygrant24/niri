@@ -9,6 +9,7 @@ use smithay::utils::{Logical, Point, Rectangle, Scale, Size};
 use super::focus_ring::{FocusRing, FocusRingRenderElement};
 use super::opening_window::{OpenAnimation, OpeningWindowRenderElement};
 use super::shadow::Shadow;
+use super::top_bar::{TopBar, TopBarRenderElement};
 use super::{
     HitType, LayoutElement, LayoutElementRenderElement, LayoutElementRenderSnapshot, Options,
     SizeFrac, RESIZE_ANIMATION_THRESHOLD,
@@ -42,6 +43,9 @@ pub struct Tile<W: LayoutElement> {
 
     /// The shadow around the window.
     shadow: Shadow,
+    
+    /// The top bar with buttons.
+    top_bar: TopBar,
 
     /// Whether this tile is fullscreen.
     ///
@@ -125,6 +129,7 @@ niri_render_elements! {
         ClippedSurface = ClippedSurfaceRenderElement<R>,
         Offscreen = OffscreenRenderElement,
         ExtraDamage = ExtraDamage,
+        TopBar = TopBarRenderElement,
     }
 }
 
@@ -170,12 +175,17 @@ impl<W: LayoutElement> Tile<W> {
         let focus_ring_config = rules.focus_ring.resolve_against(options.focus_ring.into());
         let shadow_config = rules.shadow.resolve_against(options.shadow);
         let is_fullscreen = window.is_fullscreen();
+        
+        let mut top_bar = TopBar::new();
+        let window_size = window.size().to_f64();
+        top_bar.update(window_size);
 
         Self {
             window,
             border: FocusRing::new(border_config.into()),
             focus_ring: FocusRing::new(focus_ring_config.into()),
             shadow: Shadow::new(shadow_config),
+            top_bar,
             is_fullscreen,
             fullscreen_backdrop: SolidColorBuffer::new(view_size, [0., 0., 0., 1.]),
             unfullscreen_to_floating: false,
@@ -230,6 +240,9 @@ impl<W: LayoutElement> Tile<W> {
         self.shadow.update_config(shadow_config);
 
         self.fullscreen_backdrop.resize(view_size);
+        
+        // Update the top bar with the current window size
+        self.top_bar.update(self.window_size());
     }
 
     pub fn update_shaders(&mut self) {
@@ -298,6 +311,9 @@ impl<W: LayoutElement> Tile<W> {
             .fit_to(window_size.w as f32, window_size.h as f32);
         self.rounded_corner_damage.set_corner_radius(radius);
         self.rounded_corner_damage.set_size(window_size);
+        
+        // Update the top bar when window size changes
+        self.top_bar.update(window_size);
     }
 
     pub fn advance_animations(&mut self) {
@@ -570,6 +586,9 @@ impl<W: LayoutElement> Tile<W> {
             loc = loc
                 .to_physical_precise_round(self.scale)
                 .to_logical(self.scale);
+        } else {
+            // Add space for the top bar in non-fullscreen mode
+            loc.y += super::top_bar::TOP_BAR_HEIGHT;
         }
 
         if let Some(width) = self.effective_border_width() {
@@ -594,6 +613,9 @@ impl<W: LayoutElement> Tile<W> {
             size.w += width * 2.;
             size.h += width * 2.;
         }
+        
+        // Add the height of the top bar to the total tile size
+        size.h += super::top_bar::TOP_BAR_HEIGHT;
 
         size
     }
@@ -613,6 +635,9 @@ impl<W: LayoutElement> Tile<W> {
             size.w += width * 2.;
             size.h += width * 2.;
         }
+        
+        // Add the height of the top bar to the total tile size
+        size.h += super::top_bar::TOP_BAR_HEIGHT;
 
         size
     }
@@ -678,6 +703,14 @@ impl<W: LayoutElement> Tile<W> {
     }
 
     fn is_in_input_region(&self, mut point: Point<f64, Logical>) -> bool {
+        // First check if the point is in the top bar
+        if !self.is_fullscreen && point.y < super::top_bar::TOP_BAR_HEIGHT {
+            // If the point is in the top bar, check if it's in one of the buttons
+            if self.top_bar.hit_test(point).is_some() {
+                return false; // Not in input region, will be handled by hit_top_bar
+            }
+        }
+        
         point -= self.window_loc().to_f64();
         self.window.is_in_input_region(point)
     }
@@ -686,10 +719,26 @@ impl<W: LayoutElement> Tile<W> {
         let activation_region = Rectangle::from_size(self.tile_size());
         activation_region.contains(point)
     }
+    
+    /// Checks if a point hits a button in the top bar.
+    /// Returns the button index (0, 1, or 2) if hit, None otherwise.
+    pub fn hit_top_bar(&self, point: Point<f64, Logical>) -> Option<usize> {
+        if self.is_fullscreen || point.y > super::top_bar::TOP_BAR_HEIGHT {
+            return None;
+        }
+        
+        self.top_bar.hit_test(point)
+    }
 
     pub fn hit(&self, point: Point<f64, Logical>) -> Option<HitType> {
         let offset = self.bob_offset();
         let point = point - offset;
+        
+        // Check if we hit a top bar button
+        if let Some(button_idx) = self.hit_top_bar(point) {
+            // Return TopBarButton hit type with the button index
+            return Some(HitType::TopBarButton { button_idx });
+        }
 
         if self.is_in_input_region(point) {
             let win_pos = self.buf_loc() + offset;
@@ -1044,6 +1093,10 @@ impl<W: LayoutElement> Tile<W> {
 
         let elem = focus_ring.then(|| self.focus_ring.render(renderer, location).map(Into::into));
         let rv = rv.chain(elem.into_iter().flatten());
+        
+        // Only render top bar if not fullscreen
+        let top_bar = (!self.is_fullscreen).then(|| self.top_bar.render(renderer, location).map(Into::into));
+        let rv = rv.chain(top_bar.into_iter().flatten());
 
         rv.chain(self.shadow.render(renderer, location).map(Into::into))
     }
