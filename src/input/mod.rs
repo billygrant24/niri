@@ -2546,10 +2546,18 @@ impl State {
                     // So we can use that reference directly
                     if let Some((tile, hit)) = self.niri.layout.find_tile_for_window(mapped, location) {
                         if let Some(button_idx) = tile.hit_top_bar(hit) {
-                            // Run fuzzel on button click
-                            let command = "fuzzel";
+                            // Run the appropriate command based on the button index
+                            let command = match button_idx {
+                                0 => "niri msg action maximize-column",
+                                1 => "niri msg action screenshot-window",
+                                2 => "niri msg action close-window",
+                                _ => return, // Should never happen
+                            };
+                            
                             trace!("Running command from top bar button {}: {}", button_idx, command);
-                            spawn(vec![command], None);
+                            // Split the command string into program and arguments
+                            let cmd_parts: Vec<&str> = command.split_whitespace().collect();
+                            spawn(cmd_parts, None);
                             
                             // FIXME: granular.
                             self.niri.queue_redraw_all();
